@@ -1,0 +1,12 @@
+setup.py
+pass_manager/Encryption.py
+pass_manager/__init__.py
+pass_manager/app.py
+pass_manager/databse.py
+pass_manager/gui.py
+pass_manager/utils.py
+password_manager.egg-info/PKG-INFO
+password_manager.egg-info/SOURCES.txt
+password_manager.egg-info/dependency_links.txt
+password_manager.egg-info/requires.txt
+password_manager.egg-info/top_level.txt
