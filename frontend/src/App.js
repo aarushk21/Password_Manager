@@ -22,6 +22,8 @@ import {
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
+import PasswordStrengthMeter from './components/PasswordStrengthMeter';
+import PasswordGenerator from './components/PasswordGenerator';
 
 const API_URL = 'http://localhost:5001';
 
@@ -375,6 +377,7 @@ function App() {
                       onChange={(e) => setPassword(e.target.value)}
                       sx={{ mb: 3 }}
                     />
+                    {isRegistering && <PasswordStrengthMeter password={password} />}
                   </motion.div>
                   <motion.div
                     whileHover={{ scale: 1.02 }}
@@ -772,19 +775,13 @@ function App() {
                     ),
                   }}
                 />
-                {newPassword.password && (
-                  <Box sx={{ mt: 1 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      Password Strength:
-                    </Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={(getPasswordStrength(newPassword.password) / 5) * 100}
-                      color={getStrengthColor(getPasswordStrength(newPassword.password))}
-                      sx={{ mt: 0.5 }}
-                    />
-                  </Box>
-                )}
+                <PasswordStrengthMeter password={newPassword.password} />
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2, mb: 1 }}>
+                  Or generate a strong password:
+                </Typography>
+                <PasswordGenerator 
+                  onPasswordGenerated={(password) => setNewPassword({ ...newPassword, password })}
+                />
               </motion.div>
               <motion.div
                 initial={{ y: 20, opacity: 0 }}
