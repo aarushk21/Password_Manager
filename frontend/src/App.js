@@ -3,11 +3,23 @@ import {
   Container, Box, Typography, TextField, Button, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
   List, ListItem, ListItemText, ListItemSecondaryAction,
-  ThemeProvider, createTheme, CssBaseline, Paper, Avatar, Zoom, Grow
+  ThemeProvider, createTheme, CssBaseline, Paper, Avatar, Zoom, Grow,
+  Skeleton, Chip, Tooltip, Menu, MenuItem, InputAdornment,
+  LinearProgress, Snackbar, Alert
 } from '@mui/material';
-import { Delete as DeleteIcon, Visibility as VisibilityIcon, 
-  VisibilityOff as VisibilityOffIcon, Lock as LockIcon, 
-  Add as AddIcon } from '@mui/icons-material';
+import { 
+  Delete as DeleteIcon, 
+  Visibility as VisibilityIcon, 
+  VisibilityOff as VisibilityOffIcon, 
+  Lock as LockIcon, 
+  Add as AddIcon,
+  ContentCopy as CopyIcon,
+  Search as SearchIcon,
+  FilterList as FilterIcon,
+  Person as PersonIcon,
+  Category as CategoryIcon,
+  Security as SecurityIcon
+} from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 
@@ -111,6 +123,11 @@ function App() {
   const [newPassword, setNewPassword] = useState({ site: '', username: '', password: '' });
   const [showPassword, setShowPassword] = useState({});
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterCategory, setFilterCategory] = useState('all');
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [categories] = useState(['Social', 'Work', 'Personal', 'Finance', 'Other']);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -135,17 +152,28 @@ function App() {
     e.preventDefault();
     setLoading(true);
     try {
+      console.log('Attempting to', isRegistering ? 'register' : 'login', 'with:', { username });
       const endpoint = isRegistering ? 'register' : 'login';
       const response = await axios.post(`${API_URL}/${endpoint}`, {
         username,
         password
       });
 
+      console.log('Response:', response.data);
+
       if (!isRegistering) {
+        if (!response.data.token) {
+          throw new Error('No token received from server');
+        }
         localStorage.setItem('token', response.data.token);
         setIsLoggedIn(true);
         fetchPasswords();
       } else {
+        setSnackbar({
+          open: true,
+          message: 'Registration successful! Please login.',
+          severity: 'success'
+        });
         setIsRegistering(false);
       }
 
@@ -153,7 +181,16 @@ function App() {
       setPassword('');
     } catch (error) {
       console.error('Authentication error:', error);
-      alert(error.response?.data?.message || 'An error occurred');
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.message || error.message || 'An error occurred during authentication',
+        severity: 'error'
+      });
     } finally {
       setLoading(false);
     }
@@ -207,6 +244,47 @@ function App() {
 
   const togglePasswordVisibility = (id) => {
     setShowPassword(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleCopyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    setSnackbar({
+      open: true,
+      message: 'Copied to clipboard!',
+      severity: 'success'
+    });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  const handleFilterClick = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleFilterClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleCategorySelect = (category) => {
+    setFilterCategory(category);
+    handleFilterClose();
+  };
+
+  const getPasswordStrength = (password) => {
+    let strength = 0;
+    if (password.length >= 8) strength++;
+    if (/[A-Z]/.test(password)) strength++;
+    if (/[a-z]/.test(password)) strength++;
+    if (/[0-9]/.test(password)) strength++;
+    if (/[^A-Za-z0-9]/.test(password)) strength++;
+    return strength;
+  };
+
+  const getStrengthColor = (strength) => {
+    const colors = ['error', 'warning', 'info', 'success'];
+    return colors[Math.min(strength, 4) - 1];
   };
 
   if (!isLoggedIn) {
@@ -369,7 +447,7 @@ function App() {
               transition={{ duration: 0.5 }}
             >
               <Typography variant="h4" sx={{ color: 'white', fontWeight: 600 }}>
-                Your Passwords
+                Password Vault
               </Typography>
             </motion.div>
             <motion.div
@@ -377,11 +455,15 @@ function App() {
               animate={{ x: 0, opacity: 1 }}
               transition={{ duration: 0.5 }}
             >
-              <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Tooltip title="User Profile">
+                  <Avatar sx={{ bgcolor: 'primary.main' }}>
+                    <PersonIcon />
+                  </Avatar>
+                </Tooltip>
                 <Button
                   variant="contained"
                   onClick={() => setShowAddDialog(true)}
-                  sx={{ mr: 2 }}
                   startIcon={<AddIcon />}
                   component={motion.button}
                   whileHover={{ scale: 1.05 }}
@@ -403,131 +485,208 @@ function App() {
             </motion.div>
           </Box>
 
+          <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
+            <TextField
+              fullWidth
+              placeholder="Search passwords..."
+              variant="outlined"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <Button
+              variant="outlined"
+              onClick={handleFilterClick}
+              startIcon={<FilterIcon />}
+            >
+              Filter
+            </Button>
+            <Menu
+              anchorEl={anchorEl}
+              open={Boolean(anchorEl)}
+              onClose={handleFilterClose}
+            >
+              <MenuItem onClick={() => handleCategorySelect('all')}>
+                All Categories
+              </MenuItem>
+              {categories.map((category) => (
+                <MenuItem key={category} onClick={() => handleCategorySelect(category)}>
+                  {category}
+                </MenuItem>
+              ))}
+            </Menu>
+          </Box>
+
           <MotionPaper
+            elevation={3}
+            sx={{ p: 2, borderRadius: 2 }}
             variants={containerVariants}
-            sx={{ borderRadius: 2, bgcolor: 'background.paper', overflow: 'hidden' }}
           >
             <List>
               <AnimatePresence>
-                {passwords.map((item) => (
-                  <MotionListItem
-                    key={item.id}
-                    variants={itemVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                    divider
-                    sx={{
-                      '&:last-child': {
-                        borderBottom: 'none',
-                      },
-                      borderColor: 'rgba(255,255,255,0.12)',
-                    }}
-                  >
-                    <ListItemText
-                      primary={
-                        <Typography variant="h6" sx={{ color: 'primary.main' }}>
-                          {item.site}
-                        </Typography>
-                      }
-                      secondary={
-                        <Box sx={{ mt: 1 }}>
-                          <motion.div
-                            initial={false}
-                            animate={{ 
-                              height: showPassword[item.id] ? 'auto' : 40,
-                              opacity: 1 
-                            }}
-                            transition={{ duration: 0.3 }}
-                          >
-                            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
-                              Username: {item.username}
-                            </Typography>
-                            <motion.div
-                              initial={false}
-                              animate={{
-                                opacity: showPassword[item.id] ? 1 : 0.7,
-                                scale: showPassword[item.id] ? 1 : 0.98,
-                              }}
-                              transition={{ duration: 0.2 }}
-                            >
-                              <Typography 
-                                variant="body2" 
-                                sx={{ 
-                                  color: showPassword[item.id] ? 'primary.main' : 'text.secondary',
-                                  bgcolor: showPassword[item.id] ? 'rgba(33, 150, 243, 0.1)' : 'transparent',
-                                  p: showPassword[item.id] ? 1 : 0,
-                                  borderRadius: 1,
-                                  transition: 'all 0.3s ease',
-                                  fontFamily: showPassword[item.id] ? 'monospace' : 'inherit'
-                                }}
-                              >
-                                Password: {showPassword[item.id] ? (
-                                  <motion.span
-                                    initial={{ opacity: 0, y: 5 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.2 }}
-                                  >
-                                    {item.password}
-                                  </motion.span>
-                                ) : '••••••••'}
-                              </Typography>
-                            </motion.div>
-                            {showPassword[item.id] && (
+                {loading ? (
+                  Array.from(new Array(3)).map((_, index) => (
+                    <ListItem key={index} sx={{ mb: 2 }}>
+                      <Skeleton variant="rectangular" width="100%" height={60} />
+                    </ListItem>
+                  ))
+                ) : (
+                  passwords
+                    .filter(item => 
+                      item.site.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      item.username.toLowerCase().includes(searchQuery.toLowerCase())
+                    )
+                    .filter(item => 
+                      filterCategory === 'all' || item.category === filterCategory
+                    )
+                    .map((item) => (
+                      <MotionListItem
+                        key={item.id}
+                        variants={itemVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        sx={{
+                          mb: 2,
+                          borderRadius: 2,
+                          bgcolor: 'background.paper',
+                          '&:hover': {
+                            bgcolor: 'action.hover',
+                          },
+                        }}
+                      >
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="h6">{item.site}</Typography>
+                              {item.category && (
+                                <Chip
+                                  size="small"
+                                  label={item.category}
+                                  color="primary"
+                                  variant="outlined"
+                                />
+                              )}
+                            </Box>
+                          }
+                          secondary={
+                            <Box sx={{ mt: 1 }}>
                               <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
+                                initial={false}
+                                animate={{ 
+                                  height: showPassword[item.id] ? 'auto' : 40,
+                                  opacity: 1 
+                                }}
                                 transition={{ duration: 0.3 }}
                               >
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    display: 'block',
-                                    mt: 1,
-                                    color: 'text.secondary',
-                                    fontSize: '0.7rem'
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                                    Username: {item.username}
+                                  </Typography>
+                                  <Tooltip title="Copy username">
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => handleCopyToClipboard(item.username)}
+                                    >
+                                      <CopyIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
+                                <motion.div
+                                  initial={false}
+                                  animate={{
+                                    opacity: showPassword[item.id] ? 1 : 0.7,
+                                    scale: showPassword[item.id] ? 1 : 0.98,
                                   }}
+                                  transition={{ duration: 0.2 }}
                                 >
-                                  Created: {new Date(item.created_at).toLocaleString()}
-                                </Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Typography 
+                                      variant="body2" 
+                                      sx={{ 
+                                        color: showPassword[item.id] ? 'primary.main' : 'text.secondary',
+                                        bgcolor: showPassword[item.id] ? 'rgba(33, 150, 243, 0.1)' : 'transparent',
+                                        p: showPassword[item.id] ? 1 : 0,
+                                        borderRadius: 1,
+                                        transition: 'all 0.3s ease',
+                                        fontFamily: showPassword[item.id] ? 'monospace' : 'inherit'
+                                      }}
+                                    >
+                                      Password: {showPassword[item.id] ? (
+                                        <motion.span
+                                          initial={{ opacity: 0, y: 5 }}
+                                          animate={{ opacity: 1, y: 0 }}
+                                          transition={{ duration: 0.2 }}
+                                        >
+                                          {item.password}
+                                        </motion.span>
+                                      ) : '••••••••'}
+                                    </Typography>
+                                    <Tooltip title="Copy password">
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => handleCopyToClipboard(item.password)}
+                                      >
+                                        <CopyIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </Box>
+                                  {showPassword[item.id] && (
+                                    <Box sx={{ mt: 1 }}>
+                                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                        Password Strength:
+                                      </Typography>
+                                      <LinearProgress
+                                        variant="determinate"
+                                        value={(getPasswordStrength(item.password) / 5) * 100}
+                                        color={getStrengthColor(getPasswordStrength(item.password))}
+                                        sx={{ mt: 0.5 }}
+                                      />
+                                    </Box>
+                                  )}
+                                </motion.div>
                               </motion.div>
-                            )}
-                          </motion.div>
-                        </Box>
-                      }
-                    />
-                    <ListItemSecondaryAction>
-                      <IconButton 
-                        onClick={() => togglePasswordVisibility(item.id)}
-                        sx={{ 
-                          color: showPassword[item.id] ? 'primary.main' : 'text.secondary',
-                          bgcolor: showPassword[item.id] ? 'rgba(33, 150, 243, 0.1)' : 'transparent',
-                          '&:hover': {
-                            bgcolor: showPassword[item.id] ? 'rgba(33, 150, 243, 0.2)' : 'rgba(255, 255, 255, 0.1)'
+                            </Box>
                           }
-                        }}
-                        component={motion.button}
-                        whileHover={{ scale: 1.2, rotate: 180 }}
-                        whileTap={{ scale: 0.9 }}
-                      >
-                        {showPassword[item.id] ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                      </IconButton>
-                      <IconButton 
-                        edge="end" 
-                        onClick={() => handleDeletePassword(item.id)}
-                        sx={{ color: 'secondary.main' }}
-                        component={motion.button}
-                        whileHover={{ scale: 1.2 }}
-                        whileTap={{ scale: 0.9 }}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </ListItemSecondaryAction>
-                  </MotionListItem>
-                ))}
+                        />
+                        <ListItemSecondaryAction>
+                          <IconButton 
+                            onClick={() => togglePasswordVisibility(item.id)}
+                            sx={{ 
+                              color: showPassword[item.id] ? 'primary.main' : 'text.secondary',
+                              bgcolor: showPassword[item.id] ? 'rgba(33, 150, 243, 0.1)' : 'transparent',
+                              '&:hover': {
+                                bgcolor: showPassword[item.id] ? 'rgba(33, 150, 243, 0.2)' : 'rgba(255, 255, 255, 0.1)'
+                              }
+                            }}
+                            component={motion.button}
+                            whileHover={{ scale: 1.2, rotate: 180 }}
+                            whileTap={{ scale: 0.9 }}
+                          >
+                            {showPassword[item.id] ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                          </IconButton>
+                          <IconButton 
+                            edge="end" 
+                            onClick={() => handleDeletePassword(item.id)}
+                            sx={{ color: 'secondary.main' }}
+                            component={motion.button}
+                            whileHover={{ scale: 1.2 }}
+                            whileTap={{ scale: 0.9 }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </MotionListItem>
+                    ))
+                )}
               </AnimatePresence>
-              {passwords.length === 0 && (
+              {!loading && passwords.length === 0 && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -601,26 +760,80 @@ function App() {
                   margin="normal"
                   value={newPassword.password}
                   onChange={(e) => setNewPassword({ ...newPassword, password: e.target.value })}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          onClick={() => setShowPassword({ ...showPassword, new: !showPassword.new })}
+                        >
+                          {showPassword.new ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
                 />
+                {newPassword.password && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      Password Strength:
+                    </Typography>
+                    <LinearProgress
+                      variant="determinate"
+                      value={(getPasswordStrength(newPassword.password) / 5) * 100}
+                      color={getStrengthColor(getPasswordStrength(newPassword.password))}
+                      sx={{ mt: 0.5 }}
+                    />
+                  </Box>
+                )}
+              </motion.div>
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.5 }}
+              >
+                <TextField
+                  select
+                  fullWidth
+                  label="Category"
+                  variant="outlined"
+                  margin="normal"
+                  value={newPassword.category || ''}
+                  onChange={(e) => setNewPassword({ ...newPassword, category: e.target.value })}
+                  SelectProps={{
+                    native: true,
+                  }}
+                >
+                  <option value="">Select a category</option>
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </TextField>
               </motion.div>
             </DialogContent>
-            <DialogActions sx={{ px: 3, pb: 3 }}>
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button onClick={() => setShowAddDialog(false)} color="inherit">
-                  Cancel
-                </Button>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button 
-                  onClick={handleAddPassword} 
-                  variant="contained"
-                  disabled={loading}
-                >
-                  {loading ? 'Adding...' : 'Add Password'}
-                </Button>
-              </motion.div>
+            <DialogActions>
+              <Button onClick={() => setShowAddDialog(false)}>Cancel</Button>
+              <Button 
+                onClick={handleAddPassword} 
+                variant="contained"
+                disabled={!newPassword.site || !newPassword.username || !newPassword.password}
+              >
+                Add Password
+              </Button>
             </DialogActions>
           </Dialog>
+
+          <Snackbar
+            open={snackbar.open}
+            autoHideDuration={3000}
+            onClose={handleCloseSnackbar}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          >
+            <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>
+              {snackbar.message}
+            </Alert>
+          </Snackbar>
         </MotionContainer>
       </Box>
       <style jsx global>{`
